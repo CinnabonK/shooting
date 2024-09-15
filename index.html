@@ -378,6 +378,7 @@
         }
 
         function handleCollisions() {
+            // Enemy collision with player
             enemies.forEach((enemy, index) => {
                 if (player.x < enemy.x + enemy.width &&
                     player.x + player.width > enemy.x &&
@@ -389,6 +390,7 @@
                 }
             });
 
+            // Resource collection
             resources.forEach((resource, index) => {
                 if (player.x < resource.x + resource.width &&
                     player.x + player.width > resource.x &&
@@ -406,6 +408,7 @@
                 }
             });
 
+            // Player bullets hitting enemies
             player.bullets.forEach((bullet, bIndex) => {
                 enemies.forEach((enemy, eIndex) => {
                     if (bullet.x < enemy.x + enemy.width &&
@@ -419,6 +422,7 @@
                 });
             });
 
+            // Player bullets hitting boss
             if (boss) {
                 player.bullets.forEach((bullet, bIndex) => {
                     if (bullet.x < boss.x + boss.width &&
@@ -435,8 +439,20 @@
                         }
                     }
                 });
+
+                // Player collides with the boss
+                if (player.x < boss.x + boss.width &&
+                    player.x + player.width > boss.x &&
+                    player.y < boss.y + boss.height &&
+                    player.y + player.height > boss.y) {
+                    player.life--;
+                    if (player.life <= 0) {
+                        gameOver = true;
+                    }
+                }
             }
 
+            // Player bullets hitting boss2
             if (boss2) {
                 player.bullets.forEach((bullet, bIndex) => {
                     if (bullet.x < boss2.x + boss2.width &&
@@ -448,6 +464,63 @@
                         if (boss2.life <= 0) {
                             boss2 = null;
                             kills += 25;
+                        }
+                    }
+                });
+
+                // Player collides with boss2
+                if (player.x < boss2.x + boss2.width &&
+                    player.x + player.width > boss2.x &&
+                    player.y < boss2.y + boss2.height &&
+                    player.y + player.height > boss2.y) {
+                    player.life--;
+                    if (player.life <= 0) {
+                        gameOver = true;
+                    }
+                }
+            }
+
+            // Enemy bullets hitting the player
+            enemyBullets.forEach((bullet, index) => {
+                if (bullet.x < player.x + player.width &&
+                    bullet.x + bullet.width > player.x &&
+                    bullet.y < player.y + player.height &&
+                    bullet.y + bullet.height > player.y) {
+                    enemyBullets.splice(index, 1);
+                    player.life--;
+                    if (player.life <= 0) {
+                        gameOver = true;
+                    }
+                }
+            });
+
+            // Boss bullets hitting the player
+            if (boss) {
+                boss.bullets.forEach((bullet, index) => {
+                    if (bullet.x < player.x + player.width &&
+                        bullet.x + bullet.width > player.x &&
+                        bullet.y < player.y + player.height &&
+                        bullet.y + bullet.height > player.y) {
+                        boss.bullets.splice(index, 1);
+                        player.life--;
+                        if (player.life <= 0) {
+                            gameOver = true;
+                        }
+                    }
+                });
+            }
+
+            // Boss2 bullets hitting the player
+            if (boss2) {
+                boss2.bullets.forEach((bullet, index) => {
+                    if (bullet.x < player.x + player.width &&
+                        bullet.x + bullet.width > player.x &&
+                        bullet.y < player.y + player.height &&
+                        bullet.y + bullet.height > player.y) {
+                        boss2.bullets.splice(index, 1);
+                        player.life--;
+                        if (player.life <= 0) {
+                            gameOver = true;
                         }
                     }
                 });
@@ -550,3 +623,4 @@
     </script>
 </body>
 </html>
+あ
