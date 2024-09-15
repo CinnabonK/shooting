@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>縦スクロールシューティングゲーム</title>
+    <style>
+        canvas {
+            background-color: black;
+            display: block;
+            margin: 0 auto;
+        }
+        .status-bar {
+            position: absolute;
+            top: 10px;
+            padding: 10px;
+            border: 2px solid white;
+            color: black;
+            text-align: center;
+            line-height: 20px;
+            font-size: 16px;
+        }
+        #resource-bar {
+            left: 10px;
+        }
+        #player-stats {
+            right: 10px;
+        }
+        #boss-alert {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: red;
+            font-size: 36px;
+        }
+    </style>
+</head>
+<body>
+    <div class="status-bar" id="resource-bar">
+        物資: <br>
+        <div id="resource-gauge">0/4</div>
+    </div>
+    <div class="status-bar" id="player-stats">
+        ライフ: <br>
+        <div id="player-life">3</div>
+        時間: <br>
+        <div id="player-time">0s</div>
+        撃破数: <br>
+        <div id="enemy-kills">0</div>
+    </div>
+    <div id="boss-alert">ボスが来る！</div>
+    <canvas id="gameCanvas" width="480" height="640"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const keys = {};
+        let player = {
+            x: canvas.width / 2 - 20,
+            y: canvas.height - 60,
+            width: 40,
+            height: 40,
+            speed: 3,
+            level: 1,
+            life: 3,
+            shootingInterval: 15,
+            bulletSpeed: 5,
+            lastShot: 0,
+            bullets: [],
+        };
+
+        let enemies = [];
+        let enemyBullets = [];
+        let resources = [];
+        let boss = null;
+        let gameTime = 0;
+        let kills = 0;
+        let resourceCount = 0;
+        let bossAppeared = false;
+        let gameOver = false;
+        let bossAlertShown = false;
+        let bossComingTimer = 0;
+
+        // 画像を読み込む
+        const images = {
+            player: loadImage('player.png'),
+            enemy: loadImage('enemy.png'),
+            boss: loadImage('boss.png'),
+            resource: loadImage('resource.png'),
+            bullets: loadImage('bullet.png'),
+            B1: loadImage('B1.png'),
+            B2: loadImage('B2.png'),
+            B3: loadImage('B3.png'),
+            B4: loadImage('B4.png'),
+        };
+
+        function loadImage(src) {
+            const img = new Image();
+            img.src = src;
+            img.onerror = () => img.error = true;
+            return img;
+        }
+
+        function drawPlayer() {
+            if (!images.player.error) {
+                ctx.drawImage(images.player, player.x, player.y, player.width, player.height);
+            } else {
+                ctx.fillStyle = 'blue';
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+            }
+        }
+
+        function movePlayer() {
+            if (keys['ArrowUp'] || keys['w']) player.y -= player.speed;
+            if (keys['ArrowDown'] || keys['s']) player.y += player.speed;
+            if (keys['ArrowLeft'] || keys['a']) player.x -= player.speed;
+            if (keys['ArrowRight'] || keys['d']) player.x += player.speed;
+
+            // プレイヤーがキャンバスから出ないように制約
+            player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+            player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
+        }
+
+        function shootPlayerBullets() {
+            if (player.lastShot >= player.shootingInterval) {
+                player.bullets.push({
+                    x: player.x + player.width / 2 - 3,
+                    y: player.y,
+                    width: 6,
+                    height: 20
+                });
+                player.lastShot = 0;
+            } else {
+                player.lastShot++;
+            }
+
+            player.bullets = player.bullets.filter(bullet => bullet.y > 0);
+            player.bullets.forEach(bullet => {
+                bullet.y -= player.bulletSpeed;
+                ctx.fillStyle = 'yellow';
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+        }
+
+        function spawnEnemy() {
+            enemies.push({
+                x: Math.random() * (canvas.width - 40),
+                y: -40,
+                width: 40,
+                height: 40,
+                speed: 2 + Math.random() * 2
+            });
+        }
+
+        function drawEnemies() {
+            enemies.forEach(enemy => {
+                enemy.y += enemy.speed;
+                if (!images.enemy.error) {
+                    ctx.drawImage(images.enemy, enemy.x, enemy.y, enemy.width, enemy.height);
+                } else {
+                    ctx.fillStyle = 'red';
+                    ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                }
+            });
+        }
+
+        function spawnBoss() {
+            boss = {
+                x: canvas.width / 2 - 50,
+                y: -100,
+                width: 100,
+                height: 100,
+                life: 10,
+                speed: 1,
+                direction: 1,
+                bullets: [],
+                shootingInterval: 50,
+                lastShot: 0,
+            };
+        }
+
+        function drawBoss() {
+            if (boss) {
+                boss.y += boss.speed;
+                if (boss.y >= canvas.height / 2) {
+                    boss.speed = 0;
+                }
+
+                boss.x += boss.direction * 1.5;
+                if (boss.x <= 0 || boss.x >= canvas.width - boss.width) {
+                    boss.direction *= -1;
+                }
+
+                if (!images.boss.error) {
+                    ctx.drawImage(images.boss, boss.x, boss.y, boss.width, boss.height);
+                } else {
+                    ctx.fillStyle = 'purple';
+                    ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+                }
+
+                shootBossBullets();
+            }
+        }
+
+        function shootBossBullets() {
+            if (boss.lastShot >= boss.shootingInterval) {
+                const bulletCount = 10;
+                for (let i = 0; i < bulletCount; i++) {
+                    const angle = (Math.PI * 2 / bulletCount) * i;
+                    const speed = 3;
+                    boss.bullets.push({
+                        x: boss.x + boss.width / 2,
+                        y: boss.y + boss.height / 2,
+                        dx: Math.cos(angle) * speed,
+                        dy: Math.sin(angle) * speed,
+                        width: 6,
+                        height: 6
+                    });
+                }
+                boss.lastShot = 0;
+            } else {
+                boss.lastShot++;
+            }
+
+            boss.bullets = boss.bullets.filter(bullet => bullet.y < canvas.height && bullet.y > 0 && bullet.x < canvas.width && bullet.x > 0);
+            boss.bullets.forEach(bullet => {
+                bullet.x += bullet.dx;
+                bullet.y += bullet.dy;
+                ctx.fillStyle = 'orange';
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+        }
+
+        function spawnResource() {
+            resources.push({
+                x: Math.random() * (canvas.width - 30),
+                y: -30,
+                width: 30,
+                height: 30
+            });
+        }
+
+        function drawResources() {
+            resources.forEach(resource => {
+                resource.y += 2;
+                ctx.fillStyle = 'green';
+                ctx.fillRect(resource.x, resource.y, resource.width, resource.height);
+            });
+        }
+
+        function handleCollisions() {
+            // プレイヤーと敵の衝突
+            enemies.forEach((enemy, index) => {
+                if (player.x < enemy.x + enemy.width &&
+                    player.x + player.width > enemy.x &&
+                    player.y < enemy.y + enemy.height &&
+                    player.y + player.height > enemy.y) {
+                    enemies.splice(index, 1);
+                    player.life--;
+                    if (player.life <= 0) gameOver = true;
+                }
+            });
+
+            // プレイヤーと物資の衝突
+            resources.forEach((resource, index) => {
+                if (player.x < resource.x + resource.width &&
+                    player.x + player.width > resource.x &&
+                    player.y < resource.y + resource.height &&
+                    player.y + player.height > resource.y) {
+                    resources.splice(index, 1);
+                    resourceCount++;
+                    if (resourceCount >= 4) {
+                        player.level++;
+                        player.shootingInterval = Math.max(5, player.shootingInterval - 2);
+                        player.bulletSpeed++;
+                        resourceCount = 0;
+                    }
+                }
+            });
+
+            // 弾と敵の衝突
+            player.bullets.forEach((bullet, bIndex) => {
+                enemies.forEach((enemy, eIndex) => {
+                    if (bullet.x < enemy.x + enemy.width &&
+                        bullet.x + bullet.width > enemy.x &&
+                        bullet.y < enemy.y + enemy.height &&
+                        bullet.y + bullet.height > enemy.y) {
+                        player.bullets.splice(bIndex, 1);
+                        enemies.splice(eIndex, 1);
+                        kills++;
+                    }
+                });
+            });
+
+            // 弾とボスの衝突
+            if (boss) {
+                player.bullets.forEach((bullet, bIndex) => {
+                    if (bullet.x < boss.x + boss.width &&
+                        bullet.x + bullet.width > boss.x &&
+                        bullet.y < boss.y + boss.height &&
+                        bullet.y + bullet.height > boss.y) {
+                        player.bullets.splice(bIndex, 1);
+                        boss.life--;
+                        if (boss.life <= 0) {
+                            boss = null;
+                            kills += 10;
+                        }
+                    }
+                });
+            }
+        }
+
+        function updateHUD() {
+            document.getElementById('player-life').textContent = player.life;
+            document.getElementById('player-time').textContent = Math.floor(gameTime / 60) + 's';
+            document.getElementById('enemy-kills').textContent = kills;
+            document.getElementById('resource-gauge').textContent = resourceCount + '/4';
+        }
+
+        function gameLoop() {
+            if (!gameOver) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                movePlayer();
+                drawPlayer();
+                shootPlayerBullets();
+
+                drawEnemies();
+                drawResources();
+                if (boss) drawBoss();
+
+                handleCollisions();
+                updateHUD();
+
+                if (Math.random() < 0.02) spawnEnemy();
+                if (Math.random() < 0.01) spawnResource();
+
+                if (!bossAppeared && gameTime >= 1800) { // 30秒でボス出現
+                    if (!bossAlertShown) {
+                        document.getElementById('boss-alert').style.display = 'block';
+                        bossAlertShown = true;
+                        bossComingTimer = gameTime + 120; // 2秒後にボス出現
+                    }
+
+                    if (gameTime >= bossComingTimer) {
+                        document.getElementById('boss-alert').style.display = 'none';
+                        spawnBoss();
+                        bossAppeared = true;
+                    }
+                }
+
+                gameTime++;
+                requestAnimationFrame(gameLoop);
+            } else {
+                ctx.font = "40px Arial";
+                ctx.fillStyle = "white";
+                ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+            }
+        }
+
+        document.addEventListener('keydown', e => {
+            keys[e.key] = true;
+        });
+
+        document.addEventListener('keyup', e => {
+            keys[e.key] = false;
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>
