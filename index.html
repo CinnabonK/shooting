@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>縦スクロールシューティングゲーム</title>
+    <title>シューティングゲーム</title>
     <style>
         canvas {
             background-color: black;
@@ -15,7 +15,7 @@
             top: 10px;
             padding: 10px;
             border: 2px solid white;
-            color: black;
+            color: white;
             text-align: center;
             line-height: 20px;
             font-size: 16px;
@@ -35,9 +35,35 @@
             color: red;
             font-size: 36px;
         }
+        #start-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            display: block;
+        }
+        #game-over-screen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            text-align: center;
+            display: none;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
+    <div id="start-screen">
+        <h1>縦スクロールシューティングゲーム</h1>
+        <button id="start-button">スタート</button>
+    </div>
     <div class="status-bar" id="resource-bar">
         物資: <br>
         <div id="resource-gauge">0/4</div>
@@ -49,9 +75,15 @@
         <div id="player-time">0s</div>
         撃破数: <br>
         <div id="enemy-kills">0</div>
+        最高記録: <br>
+        <div id="high-score">0</div>
     </div>
     <div id="boss-alert">ボスが来る！</div>
     <canvas id="gameCanvas" width="480" height="640"></canvas>
+    <div id="game-over-screen">
+        <h2>ゲームオーバー</h2>
+        <button id="retry-button">再試合</button>
+    </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
@@ -76,6 +108,7 @@
         let enemyBullets = [];
         let resources = [];
         let boss = null;
+        let boss2 = null;
         let gameTime = 0;
         let kills = 0;
         let resourceCount = 0;
@@ -83,18 +116,17 @@
         let gameOver = false;
         let bossAlertShown = false;
         let bossComingTimer = 0;
+        let highScore = localStorage.getItem('highScore') || 0;
+        let boss2Appeared = false;
+        let enemiesCanShoot = false;
 
-        // 画像を読み込む
         const images = {
             player: loadImage('player.png'),
             enemy: loadImage('enemy.png'),
             boss: loadImage('boss.png'),
+            boss2: loadImage('boss2.png'),
             resource: loadImage('resource.png'),
             bullets: loadImage('bullet.png'),
-            B1: loadImage('B1.png'),
-            B2: loadImage('B2.png'),
-            B3: loadImage('B3.png'),
-            B4: loadImage('B4.png'),
         };
 
         function loadImage(src) {
@@ -103,6 +135,8 @@
             img.onerror = () => img.error = true;
             return img;
         }
+
+        document.getElementById('high-score').textContent = highScore;
 
         function drawPlayer() {
             if (!images.player.error) {
@@ -114,18 +148,17 @@
         }
 
         function movePlayer() {
-            if (keys['ArrowUp'] || keys['w']) player.y -= player.speed;
-            if (keys['ArrowDown'] || keys['s']) player.y += player.speed;
-            if (keys['ArrowLeft'] || keys['a']) player.x -= player.speed;
-            if (keys['ArrowRight'] || keys['d']) player.x += player.speed;
+            if (keys['w']) player.y -= player.speed;
+            if (keys['s']) player.y += player.speed;
+            if (keys['a']) player.x -= player.speed;
+            if (keys['d']) player.x += player.speed;
 
-            // プレイヤーがキャンバスから出ないように制約
             player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
             player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
         }
 
         function shootPlayerBullets() {
-            if (player.lastShot >= player.shootingInterval) {
+            if (keys[' '] && player.lastShot >= player.shootingInterval) {
                 player.bullets.push({
                     x: player.x + player.width / 2 - 3,
                     y: player.y,
@@ -151,8 +184,21 @@
                 y: -40,
                 width: 40,
                 height: 40,
-                speed: 2 + Math.random() * 2
+                speed: 2 + Math.random() * 2,
+                canShoot: enemiesCanShoot // Enemies can shoot after boss1 is dead
             });
+        }
+
+        function shootEnemyBullets(enemy) {
+            if (enemy.canShoot && Math.random() < 0.01) {
+                enemyBullets.push({
+                    x: enemy.x + enemy.width / 2,
+                    y: enemy.y,
+                    width: 6,
+                    height: 10,
+                    speed: 3
+                });
+            }
         }
 
         function drawEnemies() {
@@ -164,6 +210,17 @@
                     ctx.fillStyle = 'red';
                     ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
                 }
+
+                shootEnemyBullets(enemy); // Enemies shoot
+            });
+        }
+
+        function drawEnemyBullets() {
+            enemyBullets = enemyBullets.filter(bullet => bullet.y < canvas.height);
+            enemyBullets.forEach(bullet => {
+                bullet.y += bullet.speed;
+                ctx.fillStyle = 'orange';
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
             });
         }
 
@@ -234,6 +291,75 @@
             });
         }
 
+        // Boss2 creation
+        function spawnBoss2() {
+            boss2 = {
+                x: canvas.width / 2 - 50,
+                y: -100,
+                width: 100,
+                height: 100,
+                life: 25,
+                speed: 1.5,
+                direction: 1,
+                bullets: [],
+                shootingInterval: 30,
+                lastShot: 0,
+                damage: 2
+            };
+        }
+
+        function drawBoss2() {
+            if (boss2) {
+                boss2.y += boss2.speed;
+                if (boss2.y >= canvas.height / 2) {
+                    boss2.speed = 0;
+                }
+
+                boss2.x += boss2.direction * 1.5;
+                if (boss2.x <= 0 || boss2.x >= canvas.width - boss2.width) {
+                    boss2.direction *= -1;
+                }
+
+                if (!images.boss2.error) {
+                    ctx.drawImage(images.boss2, boss2.x, boss2.y, boss2.width, boss2.height);
+                } else {
+                    ctx.fillStyle = 'darkred';
+                    ctx.fillRect(boss2.x, boss2.y, boss2.width, boss2.height);
+                }
+
+                shootBoss2Bullets();
+            }
+        }
+
+        function shootBoss2Bullets() {
+            if (boss2.lastShot >= boss2.shootingInterval) {
+                const bulletCount = 15;
+                for (let i = 0; i < bulletCount; i++) {
+                    const angle = (Math.PI * 2 / bulletCount) * i;
+                    const speed = 4;
+                    boss2.bullets.push({
+                        x: boss2.x + boss2.width / 2,
+                        y: boss2.y + boss2.height / 2,
+                        dx: Math.cos(angle) * speed,
+                        dy: Math.sin(angle) * speed,
+                        width: 6,
+                        height: 6
+                    });
+                }
+                boss2.lastShot = 0;
+            } else {
+                boss2.lastShot++;
+            }
+
+            boss2.bullets = boss2.bullets.filter(bullet => bullet.y < canvas.height && bullet.y > 0 && bullet.x < canvas.width && bullet.x > 0);
+            boss2.bullets.forEach(bullet => {
+                bullet.x += bullet.dx;
+                bullet.y += bullet.dy;
+                ctx.fillStyle = 'red';
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+        }
+
         function spawnResource() {
             resources.push({
                 x: Math.random() * (canvas.width - 30),
@@ -252,7 +378,6 @@
         }
 
         function handleCollisions() {
-            // プレイヤーと敵の衝突
             enemies.forEach((enemy, index) => {
                 if (player.x < enemy.x + enemy.width &&
                     player.x + player.width > enemy.x &&
@@ -264,7 +389,6 @@
                 }
             });
 
-            // プレイヤーと物資の衝突
             resources.forEach((resource, index) => {
                 if (player.x < resource.x + resource.width &&
                     player.x + player.width > resource.x &&
@@ -276,12 +400,12 @@
                         player.level++;
                         player.shootingInterval = Math.max(5, player.shootingInterval - 2);
                         player.bulletSpeed++;
+                        player.speed++;
                         resourceCount = 0;
                     }
                 }
             });
 
-            // 弾と敵の衝突
             player.bullets.forEach((bullet, bIndex) => {
                 enemies.forEach((enemy, eIndex) => {
                     if (bullet.x < enemy.x + enemy.width &&
@@ -295,7 +419,6 @@
                 });
             });
 
-            // 弾とボスの衝突
             if (boss) {
                 player.bullets.forEach((bullet, bIndex) => {
                     if (bullet.x < boss.x + boss.width &&
@@ -307,6 +430,24 @@
                         if (boss.life <= 0) {
                             boss = null;
                             kills += 10;
+                            enemiesCanShoot = true; // Enable enemy shooting after boss dies
+                            spawnBoss2(); // Spawn Boss2 after Boss1 dies
+                        }
+                    }
+                });
+            }
+
+            if (boss2) {
+                player.bullets.forEach((bullet, bIndex) => {
+                    if (bullet.x < boss2.x + boss2.width &&
+                        bullet.x + bullet.width > boss2.x &&
+                        bullet.y < boss2.y + boss2.height &&
+                        bullet.y + bullet.height > boss2.y) {
+                        player.bullets.splice(bIndex, 1);
+                        boss2.life--;
+                        if (boss2.life <= 0) {
+                            boss2 = null;
+                            kills += 25;
                         }
                     }
                 });
@@ -329,20 +470,22 @@
                 shootPlayerBullets();
 
                 drawEnemies();
+                drawEnemyBullets();
                 drawResources();
                 if (boss) drawBoss();
+                if (boss2) drawBoss2();
 
                 handleCollisions();
                 updateHUD();
 
                 if (Math.random() < 0.02) spawnEnemy();
-                if (Math.random() < 0.01) spawnResource();
+                if (gameTime % 1800 === 0) spawnResource();
 
-                if (!bossAppeared && gameTime >= 1800) { // 30秒でボス出現
+                if (!bossAppeared && gameTime >= 1800) {
                     if (!bossAlertShown) {
                         document.getElementById('boss-alert').style.display = 'block';
                         bossAlertShown = true;
-                        bossComingTimer = gameTime + 120; // 2秒後にボス出現
+                        bossComingTimer = gameTime + 120;
                     }
 
                     if (gameTime >= bossComingTimer) {
@@ -358,8 +501,44 @@
                 ctx.font = "40px Arial";
                 ctx.fillStyle = "white";
                 ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+                document.getElementById('game-over-screen').style.display = 'block';
+                if (kills > highScore) {
+                    highScore = kills;
+                    localStorage.setItem('highScore', highScore);
+                }
             }
         }
+
+        function resetGame() {
+            player.x = canvas.width / 2 - 20;
+            player.y = canvas.height - 60;
+            player.level = 1;
+            player.life = 3;
+            player.bullets = [];
+            enemies = [];
+            resources = [];
+            boss = null;
+            boss2 = null;
+            kills = 0;
+            resourceCount = 0;
+            bossAppeared = false;
+            bossAlertShown = false;
+            bossComingTimer = 0;
+            gameTime = 0;
+            gameOver = false;
+            enemiesCanShoot = false; // Reset enemy shooting capability
+            document.getElementById('game-over-screen').style.display = 'none';
+        }
+
+        document.getElementById('start-button').addEventListener('click', () => {
+            document.getElementById('start-screen').style.display = 'none';
+            gameLoop();
+        });
+
+        document.getElementById('retry-button').addEventListener('click', () => {
+            resetGame();
+            gameLoop();
+        });
 
         document.addEventListener('keydown', e => {
             keys[e.key] = true;
@@ -368,8 +547,6 @@
         document.addEventListener('keyup', e => {
             keys[e.key] = false;
         });
-
-        gameLoop();
     </script>
 </body>
 </html>
