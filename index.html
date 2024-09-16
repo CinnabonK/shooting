@@ -70,7 +70,7 @@
     </div>
     <div class="status-bar" id="player-stats">
         ライフ: <br>
-        <div id="player-life">3</div>
+        <div id="player-life">5</div>
         時間: <br>
         <div id="player-time">0s</div>
         撃破数: <br>
@@ -97,20 +97,22 @@
             height: 40,
             speed: 3,
             level: 1,
-            life: 3,
+            life: 5,
             shootingInterval: 15,
             bulletSpeed: 5,
             lastShot: 0,
             bullets: [],
-            isInvincible: false,    // New flag for invincibility state
-            invincibilityTimer: 0,  // Timer to track invincibility duration
+            isInvincible: false,
+            invincibilityTimer: 0,
         };
 
         let enemies = [];
         let enemyBullets = [];
         let resources = [];
-        let boss = null;
-        let boss2 = null;
+        let boss = null;  /// ボス1を初期化しない状態にする
+        let boss2 = null; /// ボス2も同様
+        let bossBullets = [];  /// ボス1の弾
+        let boss2Bullets = []; /// ボス2の弾
         let gameTime = 0;
         let kills = 0;
         let resourceCount = 0;
@@ -141,11 +143,10 @@
         document.getElementById('high-score').textContent = highScore;
 
         function drawPlayer() {
-            // Blinking effect if the player is invincible
             if (player.isInvincible && Math.floor(gameTime / 10) % 2 === 0) {
-                return;  // Skip drawing player to create a blinking effect
+                return; // プレイヤーが無敵状態のとき、点滅させる
             }
-            
+
             if (!images.player.error) {
                 ctx.drawImage(images.player, player.x, player.y, player.width, player.height);
             } else {
@@ -159,6 +160,7 @@
             if (keys['s']) player.y += player.speed;
             if (keys['a']) player.x -= player.speed;
             if (keys['d']) player.x += player.speed;
+          
 
             player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
             player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
@@ -185,20 +187,21 @@
             });
         }
 
-            if (!boss && !boss2) {  // Only spawn enemies if there is no boss or boss2
+        function spawnEnemy() {
+            if (!boss && !boss2) {  // ボスが存在しない場合のみ敵をスポーン
                 enemies.push({
                     x: Math.random() * (canvas.width - 40),
                     y: -40,
                     width: 40,
                     height: 40,
                     speed: 2 + Math.random() * 2,
-                    canShoot: enemiesCanShoot // Enemies can shoot after boss1 is dead
+                    canShoot: enemiesCanShoot
                 });
             }
         }
 
         function shootEnemyBullets(enemy) {
-            if (enemy && enemy.canShoot && Math.random() < 0.01) { // Check if enemy exists
+            if (enemy && enemy.canShoot && Math.random() < 0.01) {
                 enemyBullets.push({
                     x: enemy.x + enemy.width / 2,
                     y: enemy.y,
@@ -211,7 +214,7 @@
 
         function drawEnemies() {
             enemies.forEach(enemy => {
-                if (enemy) { // Check if enemy exists
+                if (enemy) {
                     enemy.y += enemy.speed;
                     if (!images.enemy.error) {
                         ctx.drawImage(images.enemy, enemy.x, enemy.y, enemy.width, enemy.height);
@@ -220,7 +223,7 @@
                         ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
                     }
 
-                    shootEnemyBullets(enemy); // Enemies shoot
+                    shootEnemyBullets(enemy);
                 }
             });
         }
@@ -243,14 +246,14 @@
                 life: 10,
                 speed: 1,
                 direction: 1,
-                bullets: [],
                 shootingInterval: 50,
                 lastShot: 0,
             };
         }
 
         function drawBoss() {
-            if (boss) {  // Check if boss exists
+            /// bossがnullでないことを確認してから描画
+            if (boss) {
                 boss.y += boss.speed;
                 if (boss.y >= canvas.height / 2) {
                     boss.speed = 0;
@@ -268,17 +271,31 @@
                     ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
                 }
 
-                shootBossBullets();
+                shootBossBullets(); // 弾を撃つ処理
             }
+
+            /// ボスがいない場合でも弾を描画する
+            drawBossBullets();
+        }
+
+        /// ボス1の弾の描画
+        function drawBossBullets() {
+            bossBullets = bossBullets.filter(bullet => bullet.y < canvas.height && bullet.y > 0 && bullet.x < canvas.width && bullet.x > 0);
+            bossBullets.forEach(bullet => {
+                bullet.x += bullet.dx;
+                bullet.y += bullet.dy;
+                ctx.fillStyle = 'orange';
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
         }
 
         function shootBossBullets() {
-            if (boss && boss.lastShot >= boss.shootingInterval) {  // Ensure boss exists
+            if (boss && boss.lastShot >= boss.shootingInterval) {
                 const bulletCount = 10;
                 for (let i = 0; i < bulletCount; i++) {
                     const angle = (Math.PI * 2 / bulletCount) * i;
                     const speed = 3;
-                    boss.bullets.push({
+                    bossBullets.push({
                         x: boss.x + boss.width / 2,
                         y: boss.y + boss.height / 2,
                         dx: Math.cos(angle) * speed,
@@ -291,19 +308,8 @@
             } else if (boss) {
                 boss.lastShot++;
             }
-
-            if (boss) {  // Ensure boss exists before drawing bullets
-                boss.bullets = boss.bullets.filter(bullet => bullet.y < canvas.height && bullet.y > 0 && bullet.x < canvas.width && bullet.x > 0);
-                boss.bullets.forEach(bullet => {
-                    bullet.x += bullet.dx;
-                    bullet.y += bullet.dy;
-                    ctx.fillStyle = 'orange';
-                    ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
-                });
-            }
         }
 
-        // Boss2 creation
         function spawnBoss2() {
             boss2 = {
                 x: canvas.width / 2 - 50,
@@ -313,7 +319,6 @@
                 life: 25,
                 speed: 1.5,
                 direction: 1,
-                bullets: [],
                 shootingInterval: 30,
                 lastShot: 0,
                 damage: 2
@@ -321,7 +326,8 @@
         }
 
         function drawBoss2() {
-            if (boss2) {  // Check if boss2 exists
+            /// boss2がnullでないことを確認してから描画
+            if (boss2) {
                 boss2.y += boss2.speed;
                 if (boss2.y >= canvas.height / 2) {
                     boss2.speed = 0;
@@ -339,17 +345,31 @@
                     ctx.fillRect(boss2.x, boss2.y, boss2.width, boss2.height);
                 }
 
-                shootBoss2Bullets();
+                shootBoss2Bullets(); // 弾を撃つ処理
             }
+
+            /// ボス2がいない場合でも弾を描画する
+            drawBoss2Bullets();
+        }
+
+        /// ボス2の弾の描画
+        function drawBoss2Bullets() {
+            boss2Bullets = boss2Bullets.filter(bullet => bullet.y < canvas.height && bullet.y > 0 && bullet.x < canvas.width && bullet.x > 0);
+            boss2Bullets.forEach(bullet => {
+                bullet.x += bullet.dx;
+                bullet.y += bullet.dy;
+                ctx.fillStyle = 'red';
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
         }
 
         function shootBoss2Bullets() {
-            if (boss2 && boss2.lastShot >= boss2.shootingInterval) {  // Ensure boss2 exists
+            if (boss2 && boss2.lastShot >= boss2.shootingInterval) {
                 const bulletCount = 15;
                 for (let i = 0; i < bulletCount; i++) {
                     const angle = (Math.PI * 2 / bulletCount) * i;
                     const speed = 4;
-                    boss2.bullets.push({
+                    boss2Bullets.push({
                         x: boss2.x + boss2.width / 2,
                         y: boss2.y + boss2.height / 2,
                         dx: Math.cos(angle) * speed,
@@ -362,22 +382,11 @@
             } else if (boss2) {
                 boss2.lastShot++;
             }
-
-            if (boss2) {  // Ensure boss2 exists before drawing bullets
-                boss2.bullets = boss2.bullets.filter(bullet => bullet.y < canvas.height && bullet.y > 0 && bullet.x < canvas.width && bullet.x > 0);
-                boss2.bullets.forEach(bullet => {
-                    bullet.x += bullet.dx;
-                    bullet.y += bullet.dy;
-                    ctx.fillStyle = 'red';
-                    ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
-                });
-            }
         }
 
-        // Define the missing drawResources function
         function drawResources() {
             resources.forEach(resource => {
-                resource.y += 2;  // Move resource down the screen
+                resource.y += 2;
                 if (!images.resource.error) {
                     ctx.drawImage(images.resource, resource.x, resource.y, resource.width, resource.height);
                 } else {
@@ -386,7 +395,6 @@
                 }
             });
 
-            // Remove resources that fall off the screen
             resources = resources.filter(resource => resource.y < canvas.height);
         }
 
@@ -400,12 +408,10 @@
         }
 
         function handleCollisions() {
-            // If player is invincible, don't check for collisions
             if (player.isInvincible) {
                 return;
             }
 
-            // Enemy collision with player
             enemies.forEach((enemy, index) => {
                 if (enemy && player.x < enemy.x + enemy.width &&
                     player.x + player.width > enemy.x &&
@@ -416,7 +422,6 @@
                 }
             });
 
-            // Resource collection
             resources.forEach((resource, index) => {
                 if (player.x < resource.x + resource.width &&
                     player.x + player.width > resource.x &&
@@ -434,7 +439,6 @@
                 }
             });
 
-            // Player bullets hitting enemies
             player.bullets.forEach((bullet, bIndex) => {
                 enemies.forEach((enemy, eIndex) => {
                     if (enemy && bullet.x < enemy.x + enemy.width &&
@@ -448,7 +452,6 @@
                 });
             });
 
-            // Player bullets hitting boss
             if (boss) {
                 player.bullets.forEach((bullet, bIndex) => {
                     if (bullet.x < boss.x + boss.width &&
@@ -458,15 +461,13 @@
                         player.bullets.splice(bIndex, 1);
                         boss.life--;
                         if (boss.life <= 0) {
-                            // Set the boss to null and clear its bullets to prevent further access
                             boss = null;
                             kills += 10;
-                            enemiesCanShoot = true; // Enable enemy shooting after boss dies
+                            enemiesCanShoot = true;
                         }
                     }
                 });
 
-                // Player collides with the boss
                 if (boss && player.x < boss.x + boss.width &&
                     player.x + player.width > boss.x &&
                     player.y < boss.y + boss.height &&
@@ -475,7 +476,6 @@
                 }
             }
 
-            // Player bullets hitting boss2
             if (boss2) {
                 player.bullets.forEach((bullet, bIndex) => {
                     if (bullet.x < boss2.x + boss2.width &&
@@ -485,14 +485,12 @@
                         player.bullets.splice(bIndex, 1);
                         boss2.life--;
                         if (boss2.life <= 0) {
-                            // Set boss2 to null and clear bullets
                             boss2 = null;
                             kills += 25;
                         }
                     }
                 });
 
-                // Player collides with boss2
                 if (boss2 && player.x < boss2.x + boss2.width &&
                     player.x + player.width > boss2.x &&
                     player.y < boss2.y + boss2.height &&
@@ -501,7 +499,6 @@
                 }
             }
 
-            // Enemy bullets hitting the player
             enemyBullets.forEach((bullet, index) => {
                 if (bullet.x < player.x + player.width &&
                     bullet.x + bullet.width > player.x &&
@@ -512,31 +509,25 @@
                 }
             });
 
-            // Boss bullets hitting the player
-            if (boss) {
-                boss.bullets.forEach((bullet, index) => {
-                    if (bullet.x < player.x + player.width &&
-                        bullet.x + bullet.width > player.x &&
-                        bullet.y < player.y + player.height &&
-                        bullet.y + bullet.height > player.y) {
-                        boss.bullets.splice(index, 1);
-                        damagePlayer();
-                    }
-                });
-            }
+            bossBullets.forEach((bullet, index) => {
+                if (bullet.x < player.x + player.width &&
+                    bullet.x + bullet.width > player.x &&
+                    bullet.y < player.y + player.height &&
+                    bullet.y + bullet.height > player.y) {
+                    bossBullets.splice(index, 1);
+                    damagePlayer();
+                }
+            });
 
-            // Boss2 bullets hitting the player
-            if (boss2) {
-                boss2.bullets.forEach((bullet, index) => {
-                    if (bullet.x < player.x + player.width &&
-                        bullet.x + bullet.width > player.x &&
-                        bullet.y < player.y + player.height &&
-                        bullet.y + bullet.height > player.y) {
-                        boss2.bullets.splice(index, 1);
-                        damagePlayer();
-                    }
-                });
-            }
+            boss2Bullets.forEach((bullet, index) => {
+                if (bullet.x < player.x + player.width &&
+                    bullet.x + bullet.width > player.x &&
+                    bullet.y < player.y + player.height &&
+                    bullet.y + bullet.height > player.y) {
+                    boss2Bullets.splice(index, 1);
+                    damagePlayer();
+                }
+            });
         }
 
         function damagePlayer() {
@@ -545,7 +536,6 @@
                 if (player.life <= 0) {
                     gameOver = true;
                 } else {
-                    // Activate invincibility for 2 seconds (120 frames)
                     player.isInvincible = true;
                     player.invincibilityTimer = 120;
                 }
@@ -569,17 +559,16 @@
 
                 drawEnemies();
                 drawEnemyBullets();
-                drawResources();  // Call drawResources to render resources
-                if (boss) drawBoss(); // Only call drawBoss if boss exists
-                if (boss2) drawBoss2(); // Only call drawBoss2 if boss2 exists
+                drawResources();
+                if (boss) drawBoss();
+                if (boss2) drawBoss2();
 
                 handleCollisions();
                 updateHUD();
 
-                if (!boss && !boss2 && Math.random() < 0.02) spawnEnemy(); // Spawn only if no boss
+                if (!boss && !boss2 && Math.random() < 0.02) spawnEnemy();
                 if (gameTime % 1800 === 0) spawnResource();
 
-                // Boss1 appearance logic after 30 seconds
                 if (!bossAppeared && gameTime >= 1800) {
                     if (!bossAlertShown) {
                         document.getElementById('boss-alert').style.display = 'block';
@@ -594,7 +583,6 @@
                     }
                 }
 
-                // Boss2 appearance logic after 1 minute (60 seconds)
                 if (!boss2Appeared && gameTime >= 3600) {
                     if (!bossAlertShown) {
                         document.getElementById('boss-alert').textContent = 'ボス2が来る！';
@@ -610,11 +598,10 @@
                     }
                 }
 
-                // Manage invincibility timer
                 if (player.isInvincible) {
                     player.invincibilityTimer--;
                     if (player.invincibilityTimer <= 0) {
-                        player.isInvincible = false;  // End invincibility
+                        player.isInvincible = false;
                     }
                 }
 
@@ -642,19 +629,21 @@
             resources = [];
             boss = null;
             boss2 = null;
+            bossBullets = []; // ボス1の弾をリセット
+            boss2Bullets = []; // ボス2の弾をリセット
             kills = 0;
             resourceCount = 0;
             bossAppeared = false;
             bossAlertShown = false;
             bossComingTimer = 0;
-            boss2Appeared = false; // Reset boss2 appearance flag
+            boss2Appeared = false;
             gameTime = 0;
             gameOver = false;
-            enemiesCanShoot = false; // Reset enemy shooting capability
-            player.isInvincible = false; // Reset invincibility
-            player.invincibilityTimer = 0; // Reset invincibility timer
+            enemiesCanShoot = false;
+            player.isInvincible = false;
+            player.invincibilityTimer = 0;
             document.getElementById('game-over-screen').style.display = 'none';
-            document.getElementById('boss-alert').textContent = 'ボスが来る！'; // Reset boss1 alert text
+            document.getElementById('boss-alert').textContent = 'ボスが来る！';
         }
 
         document.getElementById('start-button').addEventListener('click', () => {
